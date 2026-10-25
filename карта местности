@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Навигация по кампусу</title>
+  <meta name="description" content="Интерактивная навигация по кампусу">
+  <link rel="stylesheet" href="styles.css?v=27">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Навигация по кампусу</div>
+    <div class="topbar-actions">
+      <button id="btnSite" class="tab active">Участок</button>
+      <button id="btnF1" class="tab">Этаж 1</button>
+      <button id="btnF2" class="tab">Этаж 2</button>
+      <button id="btnWalk" class="tab tab-walk">3D от 1-го лица</button>
+      <button id="btn3D" class="tab tab-3d">3D-вид</button>
+      <button id="btnRouteClear" class="btn">Сбросить маршрут</button>
+      <button id="btnAuth" class="btn">Вход</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="panel">
+        <h2>Построить маршрут</h2>
+        <label class="field">
+          <span>Откуда</span>
+          <select id="fromSel"></select>
+        </label>
+        <label class="field">
+          <span>Куда</span>
+          <select id="toSel"></select>
+        </label>
+        <button id="btnBuildRoute" class="btn primary">Построить маршрут</button>
+        <div id="routeInfo" class="route-info hidden"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Мероприятия</h2>
+        <div id="eventsList" class="events-list"></div>
+      </section>
+
+      <section class="panel hidden" id="adminPanel">
+        <h2>Режим администратора</h2>
+        <div class="auth-hint">Добавьте мероприятие — метка сразу появится на плане, в 3D и панораме.</div>
+        <label class="field">
+          <span>Название</span>
+          <input id="evName" type="text" maxlength="60" placeholder="Например: Выставка роботов">
+        </label>
+        <label class="field">
+          <span>Описание</span>
+          <input id="evDesc" type="text" maxlength="80" placeholder="Время, место, детали">
+        </label>
+        <label class="field">
+          <span>Локация</span>
+          <select id="evNode"></select>
+        </label>
+        <button id="btnAddEvent" class="btn primary">Добавить мероприятие</button>
+        <div id="adminStatus" class="auth-hint"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Помощь</h2>
+        <ul class="help">
+          <li>Выберите откуда и куда — маршрут выделится</li>
+          <li>«Пройтись по маршруту» — панорама с переходами</li>
+          <li>Переключение: Участок / Этаж 1 / Этаж 2</li>
+          <li>3D-вид — здание с интерьером</li>
+          <li>«3D от 1-го лица» — прогулка по этажу с 2D-планом</li>
+        </ul>
+      </section>
+    </aside>
+
+    <section class="viewer">
+      <div class="viewer-toolbar">
+        <div class="legend">
+          <span class="legend-item"><i class="dot dot-start"></i> Старт</span>
+          <span class="legend-item"><i class="dot dot-end"></i> Финиш</span>
+          <span class="legend-item"><i class="dot dot-node"></i> Узел навигации</span>
+          <span class="legend-item"><i class="dot dot-event"></i> Мероприятие</span>
+          <span class="legend-item"><i class="line-route"></i> Маршрут</span>
+        </div>
+        <button id="btnPanoStart" class="btn primary hidden">Пройтись по маршруту (панорама)</button>
+      </div>
+      <div class="canvas-wrap">
+        <svg id="planSvg" viewBox="0 0 1000 800" preserveAspectRatio="xMidYMid meet"></svg>
+        <canvas id="planDecorCanvas" width="1000" height="800"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <div id="authOverlay" class="overlay auth-overlay hidden">
+    <div class="auth-card">
+      <h2>Вход в систему</h2>
+      <p class="auth-hint">Гостевой доступ открыт без пароля. Администратор: admin / admin.</p>
+      <label class="field">
+        <span>Логин</span>
+        <input id="authLogin" type="text" autocomplete="username" placeholder="admin">
+      </label>
+      <label class="field">
+        <span>Пароль</span>
+        <input id="authPass" type="password" autocomplete="current-password" placeholder="admin">
+      </label>
+      <div id="authError" class="auth-error"></div>
+      <div class="auth-actions">
+        <button id="btnLogin" class="btn primary">Войти</button>
+        <button id="btnGuest" class="btn">Продолжить как гость</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="panoOverlay" class="overlay hidden">
+    <div class="pano-header">
+      <div class="pano-title">Панорамный обход</div>
+      <div class="pano-steps">
+        <span id="panoStepText">Шаг 1 / 1</span>
+      </div>
+      <div class="pano-head-actions">
+        <button id="panoWalkBtn" class="btn primary">3D от 1-го лица</button>
+        <button id="panoClose" class="btn">Закрыть (Esc)</button>
+      </div>
+    </div>
+    <div class="pano-body">
+      <canvas id="panoCanvas" width="1440" height="780"></canvas>
+      <div id="panoHotspots" class="pano-hotspots"></div>
+      <div id="panoEvents" class="pano-events"></div>
+      <div class="pano-crosshair"></div>
+      <button id="panoPrev" class="pano-nav pano-prev">◀</button>
+      <button id="panoNext" class="pano-nav pano-next">▶</button>
+    </div>
+    <div class="pano-footer">
+      <div class="pano-minimap-wrap">
+        <canvas id="panoMiniCanvas" width="210" height="140"></canvas>
+        <div class="pano-mini-label">2D-план</div>
+      </div>
+      <div id="panoRoute" class="pano-route"></div>
+      <div class="pano-tip">ЛКМ — обзор • Колесо — наклон • «3D от 1-го лица» — прогулка</div>
+    </div>
+  </div>
+
+  <div id="walkOverlay" class="overlay hidden">
+    <div class="pano-header walk-header">
+      <div class="walk-title">
+        <div class="pano-title">3D-прогулка от первого лица</div>
+        <div id="walkSubtitle" class="walk-subtitle">Этаж 1 • Холл</div>
+      </div>
+      <div class="pano-head-actions">
+        <button id="walkPanoBtn" class="btn">Вернуться в панораму</button>
+        <button id="walkClose" class="btn">Закрыть (Esc)</button>
+      </div>
+    </div>
+    <div class="walk-body">
+      <canvas id="walkCanvas" width="1024" height="576"></canvas>
+      <div class="walk-minimap-panel">
+        <canvas id="walkMiniCanvas" width="260" height="180"></canvas>
+        <div id="walkMiniLabel" class="walk-mini-label">Этаж 1</div>
+      </div>
+      <div class="walk-location">
+        <div id="walkLocation" class="walk-location-title">Этаж 1 • Холл</div>
+        <div id="walkEvents" class="walk-events"></div>
+      </div>
+      <div class="walk-crosshair"></div>
+      <div class="walk-guide">
+        <span><b>WASD</b> / стрелки — движение</span>
+        <span><b>Мышь</b> — обзор</span>
+        <span><b>Shift</b> — быстрее</span>
+        <span><b>Колесо</b> — угол обзора</span>
+      </div>
+      <div class="walk-steps">
+        <button id="walkPrev" class="pano-nav walk-prev">◀</button>
+        <span id="walkStepText" class="walk-step-text">Шаг 1 / 1</span>
+        <button id="walkNext" class="pano-nav walk-next">▶</button>
+      </div>
+    </div>
+    <div class="walk-footer">
+      <div id="walkRoute" class="pano-route"></div>
+      <div id="walkHint" class="pano-tip">Свободная прогулка по этажу</div>
+    </div>
+  </div>
+
+  <div id="view3dOverlay" class="overlay hidden">
+    <div class="pano-header">
+      <div class="pano-title">3D-вид здания (аксонометрия)</div>
+      <div class="pano-tip">Перетаскивайте мышью для вращения • Колесо — масштаб • Двойной клик — сброс</div>
+      <button id="view3dClose" class="btn">Закрыть (Esc)</button>
+    </div>
+    <div class="view3d-body">
+      <canvas id="view3dCanvas" width="1400" height="900"></canvas>
+    </div>
+  </div>
+
+  <script src="js/data.js?v=27"></script>
+  <script src="js/route.js?v=27"></script>
+  <script src="js/decor.js?v=27"></script>
+  <script src="js/pano.js?v=27"></script>
+  <script src="js/view3d.js?v=27"></script>
+  <script src="js/walk3d.js?v=27"></script>
+  <script src="js/app.js?v=27"></script>
+</body>
+</html>
+
+{
+  "name": "mall-map",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
+    "install:all": "npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
+
+# Интерактивная карта ТЦ
+
+Веб-приложение для интерактивного плана двухэтажного торгового центра с кинотеатром и парковкой.
+
+## Возможности
+
+### Для гостя
+- Просмотр плана по этажам (1 и 2 этаж)
+- Просмотр парковки
+- Просмотр меток с мероприятиями/объектами (название + описание)
+- Просмотр маршрутов, нарисованных администратором
+- Построение маршрута "откуда-куда" между метками
+
+### Для администратора
+- Логин: `admin` / `admin`
+- Добавление меток на плане с названием и описанием
+- Рисование маршрутов кликами по точкам
+- Удаление меток и маршрутов
+
+## Технологии
+- Frontend: Vite + React + TypeScript + Tailwind CSS
+- Backend: Node.js + Express
+- Хранилище: JSON-файл (`data/data.json`)
+
+## Запуск
+
+```bash
+npm install
+npm run dev
+```
+
+Приложение будет доступно:
+- Фронтенд: http://localhost:5173
+- Бэкенд: http://localhost:4000
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; }
+body { background: #0f1026; color: #e7e9ee; line-height: 1.4; }
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: linear-gradient(90deg, #1f2237 0%, #15182b 100%); border-bottom: 1px solid #2a2e4d; }
+.brand { font-weight: 700; letter-spacing: 0.3px; }
+.topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.tab { background: transparent; color: #c9cbe6; border: 1px solid transparent; padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+.tab.active { background: #3b82f6; color: white; }
+.tab-3d { background: #22c55e22; border-color: #22c55e66; color: #86efac; }
+.tab-walk { background: linear-gradient(135deg, #f59e0b22, #3b82f622); border-color: #f59e0b66; color: #fde68a; }
+.btn { background: #2a2e4d; color: #e7e9ee; border: 1px solid #3a3f66; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+.btn.primary { background: linear-gradient(90deg, #3b82f6, #2563eb); border-color: transparent; }
+.btn:hover { filter: brightness(1.1); }
+.layout { display: grid; grid-template-columns: 280px 1fr; gap: 12px; padding: 12px; height: calc(100vh - 56px); }
+.sidebar { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.panel { background: radial-gradient(circle at top, #242744, #1a1d33); border: 1px solid #2a2e4d; border-radius: 12px; padding: 14px; box-shadow: 0 30px 60px -40px rgba(59,130,246,0.9); }
+.panel h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.12em; color: #9aa0d6; margin-bottom: 10px; }
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; font-size: 14px; }
+.field select { background: #15182b; color: #e7e9ee; border: 1px solid #3a3f66; border-radius: 8px; padding: 8px; }
+.field input { background: #15182b; color: #e7e9ee; border: 1px solid #3a3f66; border-radius: 8px; padding: 8px; }
+.auth-overlay { align-items: center; justify-content: center; }
+.auth-card { width: min(380px, calc(100vw - 32px)); background: radial-gradient(circle at top, #2a2e4d, #171a30); border: 1px solid #3a3f66; border-radius: 16px; padding: 22px; box-shadow: 0 40px 90px -40px rgba(0,0,0,0.9); }
+.auth-card h2 { font-size: 18px; margin-bottom: 8px; }
+.auth-hint { font-size: 12px; color: #9aa0d6; margin-bottom: 12px; }
+.auth-error { color: #fca5a5; font-size: 13px; min-height: 18px; margin-bottom: 6px; }
+.auth-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.admin-panel { border-color: rgba(245,158,11,0.5); }
+.route-info { margin-top: 10px; font-size: 13px; color: #c9cbe6; }
+.help { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #b7b9e6; padding-left: 18px; }
+.events-list { display: flex; flex-direction: column; gap: 8px; }
+.event-item { background: linear-gradient(90deg, rgba(245,158,11,0.18), transparent); border: 1px solid rgba(245,158,11,0.5); border-radius: 10px; padding: 8px 10px; }
+.event-title { font-weight: 600; font-size: 13px; }
+.event-desc { font-size: 12px; color: #c9cbe6; margin-top: 2px; }
+.viewer { display: flex; flex-direction: column; gap: 10px; }
+.viewer-toolbar { display: flex; align-items: center; justify-content: space-between; background: #1a1d33; border: 1px solid #2a2e4d; border-radius: 12px; padding: 8px 12px; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.dot-start { background: #22c55e; box-shadow: 0 0 0 4px rgba(34,197,94,0.18); }
+.dot-end { background: #ef4444; box-shadow: 0 0 0 4px rgba(239,68,68,0.18); }
+.dot-node { background: #f59e0b; }
+.dot-event { background: #fbbf24; box-shadow: 0 0 0 4px rgba(245,158,11,0.2); }
+.line-route { width: 18px; height: 3px; background: linear-gradient(90deg, #60a5fa, #3b82f6); border-radius: 999px; }
+.canvas-wrap { position: relative; flex: 1; background: radial-gradient(circle at top, #26294a, #15182b); border: 1px solid #2a2e4d; border-radius: 16px; overflow: hidden; }
+#planSvg { position: absolute; inset: 0; width: 100%; height: 100%; }
+#planDecorCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.overlay { position: fixed; inset: 0; background: radial-gradient(circle at top, rgba(36,39,68,0.98), rgba(15,16,38,0.98)); display: flex; flex-direction: column; z-index: 10; }
+.overlay.hidden { display: none; }
+.pano-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid #2a2e4d; }
+.pano-title { font-weight: 600; }
+.pano-head-actions { display: flex; align-items: center; gap: 8px; }
+.pano-body { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+#panoCanvas { max-width: 100%; max-height: 100%; cursor: grab; border-radius: 8px; box-shadow: 0 40px 90px -50px rgba(0,0,0,0.9); }
+#panoCanvas.dragging { cursor: grabbing; }
+.pano-hotspots { position: absolute; inset: 0; pointer-events: none; }
+.pano-hotspot { position: absolute; transform: translate(-50%, -50%); background: rgba(59,130,246,0.92); color: white; padding: 6px 10px; border-radius: 999px; pointer-events: auto; cursor: pointer; font-size: 13px; box-shadow: 0 20px 40px -20px rgba(59,130,246,0.9); border: 1px solid rgba(191,219,254,0.8); white-space: nowrap; }
+.pano-hotspot.event { background: rgba(245,158,11,0.95); border-color: #fde68a; }
+.pano-events { position: absolute; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; max-width: 280px; pointer-events: none; }
+.pano-event-card { background: rgba(15,17,35,0.88); border: 1px solid rgba(245,158,11,0.6); border-radius: 10px; padding: 8px 10px; font-size: 12px; box-shadow: 0 20px 40px -24px rgba(0,0,0,0.9); }
+.pano-event-card b { color: #fbbf24; display: block; margin-bottom: 2px; }
+.pano-event-card span { color: #c9cbe6; }
+.pano-crosshair { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; transform: translate(-50%,-50%); pointer-events: none; opacity: 0.5; }
+.pano-crosshair::before, .pano-crosshair::after { content: ''; position: absolute; background: rgba(231,233,238,0.7); }
+.pano-crosshair::before { left: 50%; top: 0; width: 1px; height: 100%; }
+.pano-crosshair::after { top: 50%; left: 0; height: 1px; width: 100%; }
+.pano-nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(21,24,43,0.8); color: white; border: 1px solid #3a3f66; width: 44px; height: 44px; border-radius: 50%; cursor: pointer; }
+.pano-prev { left: 16px; }
+.pano-next { right: 16px; }
+.pano-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 16px; border-top: 1px solid #2a2e4d; }
+.pano-minimap-wrap { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
+#panoMiniCanvas { width: 210px; height: 140px; border-radius: 10px; border: 1px solid rgba(120,130,190,0.45); background: #0d1021; box-shadow: inset 0 0 30px rgba(59,130,246,0.12); }
+.pano-mini-label { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #7f87bd; text-align: center; }
+.pano-route { font-size: 13px; color: #bfdbfe; border: 1px solid rgba(96,165,250,0.35); background: rgba(37,99,235,0.12); border-radius: 999px; padding: 5px 12px; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pano-tip { font-size: 13px; color: #9aa0d6; }
+.view3d-body { flex: 1; display: flex; align-items: center; justify-content: center; }
+#view3dCanvas { max-width: 100%; max-height: 100%; }
+
+/* 3D-прогулка от первого лица */
+.walk-header { align-items: center; }
+.walk-title { display: flex; flex-direction: column; gap: 2px; }
+.walk-subtitle { font-size: 12px; color: #9aa0d6; }
+.walk-body { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #070912; }
+#walkCanvas { width: 100%; height: 100%; object-fit: cover; cursor: grab; background: #0a0d18; image-rendering: auto; }
+#walkCanvas.dragging { cursor: grabbing; }
+.walk-minimap-panel { position: absolute; top: 14px; right: 14px; padding: 7px; border-radius: 14px; background: rgba(10,13,27,0.82); border: 1px solid rgba(120,130,190,0.45); box-shadow: 0 18px 50px -25px rgba(0,0,0,0.9); backdrop-filter: blur(8px); }
+#walkMiniCanvas { display: block; width: 260px; height: 180px; border-radius: 9px; }
+.walk-mini-label { text-align: center; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #8e96c9; padding-top: 4px; }
+.walk-location { position: absolute; top: 14px; left: 14px; min-width: 180px; padding: 9px 12px; border-radius: 12px; background: rgba(10,13,27,0.78); border: 1px solid rgba(120,130,190,0.4); backdrop-filter: blur(8px); }
+.walk-location-title { font-size: 13px; font-weight: 700; color: #f1f3ff; }
+.walk-events { display: flex; flex-direction: column; gap: 3px; margin-top: 5px; font-size: 11px; color: #fbbf24; }
+.walk-events span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px; }
+.walk-crosshair { position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; transform: translate(-50%,-50%); pointer-events: none; opacity: 0.65; }
+.walk-crosshair::before, .walk-crosshair::after { content: ''; position: absolute; background: rgba(240,244,255,0.8); box-shadow: 0 0 4px rgba(0,0,0,0.8); }
+.walk-crosshair::before { left: 50%; top: 0; width: 1px; height: 100%; }
+.walk-crosshair::after { top: 50%; left: 0; height: 1px; width: 100%; }
+.walk-guide { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; padding: 7px 14px; border-radius: 999px; background: rgba(10,13,27,0.74); border: 1px solid rgba(120,130,190,0.35); color: #b9c0e9; font-size: 12px; pointer-events: none; white-space: nowrap; }
+.walk-guide b { color: #fff; }
+.walk-steps { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; }
+.walk-steps .pano-nav { position: static; transform: none; width: 36px; height: 36px; background: rgba(10,13,27,0.8); }
+.walk-step-text { font-size: 12px; color: #c9cbe6; background: rgba(10,13,27,0.72); border: 1px solid rgba(120,130,190,0.35); border-radius: 999px; padding: 4px 10px; }
+.walk-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 16px; border-top: 1px solid #2a2e4d; }
+.walk-footer .pano-route { max-width: 60%; }
+@media (max-width: 800px) {
+  .walk-minimap-panel { transform: scale(0.78); transform-origin: top right; }
+  .walk-location { max-width: 45vw; }
+  .walk-guide { font-size: 10px; gap: 8px; }
+}
+@media (max-width: 600px) {
+  .pano-header, .walk-header { flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
+  .pano-title, .walk-title { font-size: 14px; }
+  .pano-head-actions { gap: 4px; }
+  .pano-head-actions .btn { font-size: 11px; padding: 6px 8px; }
+  .walk-subtitle { display: none; }
+  .walk-steps { top: auto; bottom: 8px; gap: 6px; }
+  .walk-step-text { font-size: 10px; padding: 3px 8px; }
+  .walk-steps .pano-nav { width: 30px; height: 30px; }
+  .walk-minimap-panel { transform: scale(0.6); top: 6px; right: 6px; padding: 5px; }
+  .walk-location { top: 6px; left: 6px; max-width: 45vw; min-width: 0; padding: 6px 8px; }
+  .walk-location-title { font-size: 11px; }
+  .walk-events { display: none; }
+  .walk-guide { display: none; }
+  .walk-footer { flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
+  .walk-footer .pano-route { max-width: 100%; font-size: 11px; white-space: normal; }
+  .walk-footer .btn { font-size: 11px; padding: 6px 8px; }
+  .pano-footer { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
+  .pano-route { max-width: 100%; font-size: 11px; white-space: normal; }
+  .pano-minimap-wrap { width: 150px; }
+  #panoMiniCanvas { width: 150px; height: 100px; }
+  .pano-tip { display: none; }
+  .pano-events { display: none; }
+}
+.hidden { display: none !important; }
+@media (max-width: 1080px) {
+  .layout { grid-template-columns: 1fr; height: auto; }
+  .sidebar { flex-direction: row; flex-wrap: wrap; }
+  .panel { flex: 1 1 260px; }
+}
